@@ -3,6 +3,7 @@ import re
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from models.agent_state import Emotion, EmotionType, MemoryEntry
+from models.world_state import WeatherType
 
 if TYPE_CHECKING:
     from models.agent_state import Agent
@@ -107,7 +108,7 @@ class CommunicationParser:
             dom = recipient.dominant_emotion
             if dom and dom.emotion_type in (EmotionType.FEAR, EmotionType.ANGER):
                 misinterpret_prob += 0.05
-            if world_state.weather.value in ("STORM", "FOG"):
+            if world_state.weather in (WeatherType.STORM, WeatherType.FOG):
                 misinterpret_prob += 0.03
             misinterpret_prob = max(0.0, min(0.5, misinterpret_prob))
             is_misinterpreted = rng.random() < misinterpret_prob

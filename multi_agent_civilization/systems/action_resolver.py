@@ -444,9 +444,8 @@ class ActionResolver:
         if not recipe:
             return ActionResult(False, f"Unknown recipe: {craft_type}.")
 
-        skill_req = recipe.pop("skill_req", 0.0)
+        skill_req = recipe.get("skill_req", 0.0)
         if skill < skill_req:
-            recipe["skill_req"] = skill_req
             return ActionResult(False, f"{agent.name} lacks skill to craft {craft_type}.")
 
         # Check resources

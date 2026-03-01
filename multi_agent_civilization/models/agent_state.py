@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, ClassVar, Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from models.world_state import ResourceType
@@ -193,14 +193,9 @@ class Needs:
     influence: float = 0.0
     rest: float = 0.0
 
-    CRITICAL: float = field(default=0.85, init=False, repr=False, compare=False)
-    DANGER: float = field(default=0.7, init=False, repr=False, compare=False)
-    COMFORT: float = field(default=0.3, init=False, repr=False, compare=False)
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, 'CRITICAL', 0.85)
-        object.__setattr__(self, 'DANGER', 0.7)
-        object.__setattr__(self, 'COMFORT', 0.3)
+    CRITICAL: ClassVar[float] = 0.85
+    DANGER: ClassVar[float] = 0.7
+    COMFORT: ClassVar[float] = 0.3
 
     def tick(self) -> None:
         self.hunger = min(1.0, self.hunger + 0.08)

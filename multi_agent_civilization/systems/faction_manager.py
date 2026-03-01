@@ -3,11 +3,16 @@ import uuid
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from models.faction import Faction, FactionNorm
-from models.agent_state import Emotion, EmotionType, MemoryEntry
+from models.agent_state import Emotion, EmotionType, MemoryEntry, Relationship
 
 if TYPE_CHECKING:
     from models.world_state import WorldState
     from models.actions import Action
+
+
+def _default_relationship(respect: float = 0.5) -> Relationship:
+    """Return a default Relationship with the given respect value."""
+    return Relationship(respect=respect)
 
 
 class FactionManager:
@@ -129,7 +134,7 @@ class FactionManager:
             return
 
         leader_respect = sum(
-            world_state.agents[m].relationships.get(faction.leader_id, type('', (), {'respect': 0.5})()).respect
+            world_state.agents[m].relationships.get(faction.leader_id, _default_relationship()).respect
             for m in faction.members if m != faction.leader_id and world_state.agents.get(m)
         ) / max(1, len(faction.members) - 1)
 
@@ -141,7 +146,7 @@ class FactionManager:
                 continue
 
             challenger_respect = sum(
-                world_state.agents[m].relationships.get(challenger_id, type('', (), {'respect': 0.5})()).respect
+                world_state.agents[m].relationships.get(challenger_id, _default_relationship()).respect
                 for m in faction.members if m != challenger_id and world_state.agents.get(m)
             ) / max(1, len(faction.members) - 1)
 
@@ -151,8 +156,8 @@ class FactionManager:
                     1 for m in faction.members
                     if m != faction.leader_id and
                     world_state.agents.get(m) and
-                    world_state.agents[m].relationships.get(challenger_id, type('', (), {'respect': 0})()).respect >
-                    world_state.agents[m].relationships.get(faction.leader_id, type('', (), {'respect': 0})()).respect
+                    world_state.agents[m].relationships.get(challenger_id, _default_relationship(0.0)).respect >
+                    world_state.agents[m].relationships.get(faction.leader_id, _default_relationship(0.0)).respect
                 )
                 if supporters > len(faction.members) // 2:
                     faction.leader_id = challenger_id
