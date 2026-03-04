@@ -24,7 +24,7 @@ import random
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from agent_state import Agent, EmotionType
+from agent_state import Agent, Emotion
 from communication_parser import CommunicationPipeline, Message, CommunicationResult
 from emotion_system import (
     EmotionalContagion,
@@ -200,11 +200,20 @@ class TurnEngine:
             )
 
     def _phase_mood_update(self) -> None:
-        """Phase 16: Update each agent's mood."""
+        """Phase 16: Update each agent's mood based on recent emotion history (last 5 turns)."""
         for agent in self.agents:
-            recent_emotions = list(agent.emotions.values())
+            # Flatten the rolling emotion history into a list of Emotion-like objects.
+            # Fall back to the current emotion state if no history exists yet.
+            if agent.emotion_history:
+                history_emotions = [
+                    Emotion(emotion_type=et, intensity=intensity)
+                    for snapshot in agent.emotion_history
+                    for et, intensity in snapshot.items()
+                ]
+            else:
+                history_emotions = list(agent.emotions.values())
             agent.mood.update(
-                recent_emotions=recent_emotions,
+                recent_emotions=history_emotions,
                 needs_satisfied=agent.needs.is_satisfied(),
                 social_cooperation=False,   # stub — set by action resolution phase
                 social_betrayal=False,       # stub

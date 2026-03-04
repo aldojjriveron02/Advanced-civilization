@@ -8,9 +8,9 @@ communication pipeline and detects emotional authenticity (masking).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from agent_state import Agent, EmotionType
+from agent_state import Agent
 
 
 # ---------------------------------------------------------------------------
@@ -107,8 +107,6 @@ class EmotionalSpeechModifier:
             for recipient in recipients:
                 if self._can_detect_masking(recipient, sender):
                     masking_detectors.append(recipient.agent_id)
-                    rel = recipient.relationships.get(sender.agent_id)
-                    interaction_count = rel.interaction_count if rel else 0
                     recipient.add_memory(
                         content=(
                             f"I noticed {sender.name} seemed to be hiding something — "
@@ -186,11 +184,19 @@ class CommunicationPipeline:
             sender = agents_by_id.get(msg.sender_id)
             if sender is None:
                 continue
-            recipients = [
-                agents_by_id[rid]
-                for rid in msg.recipients
-                if rid in agents_by_id
-            ]
+            # Treat an empty recipient list as a broadcast to all agents except the sender
+            if msg.recipients:
+                recipients = [
+                    agents_by_id[rid]
+                    for rid in msg.recipients
+                    if rid in agents_by_id
+                ]
+            else:
+                recipients = [
+                    agent
+                    for aid, agent in agents_by_id.items()
+                    if aid != msg.sender_id
+                ]
             result = self.modifier.process(msg, sender, recipients)
             results.append(result)
             # Update interaction counts

@@ -10,8 +10,8 @@ Includes:
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
 
 from agent_state import (
     Agent,
@@ -178,15 +178,26 @@ class EmotionalBreakingPoint:
 
         events: List[BreakingPointEvent] = []
         for agent in agents:
+            # Update consecutive-turns-above-threshold counters for this turn
+            for emotion_type, emotion in agent.emotions.items():
+                if emotion.intensity >= 0.6:
+                    agent.high_intensity_turns[emotion_type] = (
+                        agent.high_intensity_turns.get(emotion_type, 0) + 1
+                    )
+                else:
+                    agent.high_intensity_turns[emotion_type] = 0
+
             for config in BREAKING_POINT_CONFIGS:
                 emotion_type, min_turns, threshold, bp_name = config
                 emotion = agent.get_emotion(emotion_type)
-                if emotion.intensity >= threshold and emotion.turns_active >= min_turns:
+                turns_above = agent.high_intensity_turns.get(emotion_type, 0)
+                if emotion.intensity >= threshold and turns_above >= min_turns:
                     evt = self._trigger(agent, emotion_type, bp_name, all_agents, turn, rng)
                     events.append(evt)
-                    # Catharsis — reset emotion
+                    # Catharsis — reset emotion and its consecutive-high counter
                     emotion.intensity = CATHARSIS_INTENSITY
                     emotion.turns_active = 0
+                    agent.high_intensity_turns[emotion_type] = 0
 
         return events
 
@@ -211,7 +222,8 @@ class EmotionalBreakingPoint:
             agent.add_memory("I can't trust anyone anymore.", importance=0.8, turn=turn)
 
         elif bp_name == "Rage":
-            # Unprovoked attack on lowest-affinity agent
+            # Sets attack intent toward the lowest-affinity agent via an aggression boost;
+            # the turn engine executes the actual attack during action resolution.
             target_id = agent.lowest_affinity_agent()
             if target_id:
                 agent.add_memory("Something snapped inside me.", importance=0.85, turn=turn)

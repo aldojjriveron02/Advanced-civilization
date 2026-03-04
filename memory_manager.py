@@ -62,13 +62,11 @@ class MemoryManager:
         return results
 
     def vivid_memories(self) -> List[MemoryEntry]:
-        """Return the top N memories by emotional_intensity_at_creation."""
-        sorted_by_vividness = sorted(
-            self._memories,
-            key=lambda m: m.emotional_intensity_at_creation,
-            reverse=True,
-        )
-        return sorted_by_vividness[: self.VIVID_TOP_N]
+        """Return the top N memories that qualify as vivid (emotional_intensity > 0.7),
+        ordered by emotional intensity descending."""
+        candidates = [m for m in self._memories if m.is_vivid()]
+        candidates.sort(key=lambda m: m.emotional_intensity_at_creation, reverse=True)
+        return candidates[: self.VIVID_TOP_N]
 
     # ------------------------------------------------------------------
     # Context building

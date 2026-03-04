@@ -12,22 +12,13 @@ Covers:
 from __future__ import annotations
 
 import random
-import sys
-import os
-
-# Ensure the repo root is on sys.path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-import pytest
 
 from agent_state import (
     Agent,
-    Emotion,
     EmotionType,
     MemoryEntry,
     Mood,
     Personality,
-    Needs,
 )
 from emotion_system import (
     EmotionalContagion,
@@ -399,18 +390,26 @@ class TestEmotionalMemory:
         )
 
     def test_vivid_memories_top_5_by_intensity(self) -> None:
-        """MemoryManager.vivid_memories() returns top 5 by emotional intensity."""
+        """MemoryManager.vivid_memories() returns top 5 vivid memories by emotional intensity."""
+        # 20 memories with intensities normalized to [0, 1] by dividing by 19 (max index).
+        # Memories at index 14–19 qualify as vivid (14/19 ≈ 0.737 > 0.7), giving 6
+        # candidates; the method returns only the top VIVID_TOP_N=5.
         memories = [
             MemoryEntry(f"mem_{i}", importance=0.5, turn_created=0,
-                        emotional_intensity_at_creation=float(i) / 10)
+                        emotional_intensity_at_creation=float(i) / 19)
             for i in range(20)
         ]
         mm = MemoryManager(memories)
         vivid = mm.vivid_memories()
+        # Memories with intensity > 0.7 qualify; with 20 entries at i/19,
+        # that is i >= 14 (14/19 ≈ 0.737), giving 6 candidates → top 5 returned.
         assert len(vivid) == 5
         intensities = [m.emotional_intensity_at_creation for m in vivid]
         assert all(intensities[i] >= intensities[i + 1] for i in range(4)), (
             "Vivid memories should be ordered by intensity descending"
+        )
+        assert all(m.is_vivid() for m in vivid), (
+            "All returned memories must meet the vivid threshold (intensity > 0.7)"
         )
 
 
@@ -427,7 +426,9 @@ class TestBreakingPoints:
         agent = make_agent()
         emo = agent.get_emotion(emotion_type)
         emo.intensity = intensity
-        emo.turns_active = turns
+        # Pre-fill high_intensity_turns so that after check_agents increments by 1
+        # the total equals `turns`, satisfying the min_turns threshold.
+        agent.high_intensity_turns[emotion_type] = turns - 1
         return agent
 
     def test_fear_breaking_point_triggers_paranoia_after_5_turns(self) -> None:
@@ -637,3 +638,48 @@ class TestComplexEmotions:
         assert abs(jealousy.intensity - expected) < 0.01, (
             f"Jealousy intensity should be average of components: {expected}, got {jealousy.intensity}"
         )
+
+
+# ---------------------------------------------------------------------------
+# TestBroadcastCommunication
+# ---------------------------------------------------------------------------
+
+class TestBroadcastCommunication:
+    """Broadcast messages (empty recipient list) reach all agents except the sender."""
+
+    def test_broadcast_reaches_all_agents_except_sender(self) -> None:
+        """An empty recipient list should notify every agent except the sender."""
+        from communication_parser import CommunicationPipeline, Message
+
+        sender = make_agent("sender", "Sender")
+        a2 = make_agent("a2", "AgentTwo")
+        a3 = make_agent("a3", "AgentThree")
+        agents_by_id = {a.agent_id: a for a in [sender, a2, a3]}
+
+        # Empty recipients → broadcast
+        msg = Message(sender_id="sender", content="Hello everyone!", recipients=[])
+        pipeline = CommunicationPipeline()
+        results = pipeline.process_turn_messages([msg], agents_by_id)
+
+        assert len(results) == 1
+        result = results[0]
+        assert set(result.recipients_notified) == {"a2", "a3"}, (
+            "Broadcast should notify all agents except the sender"
+        )
+
+    def test_broadcast_updates_interaction_counts(self) -> None:
+        """Broadcast should increment interaction counts for all non-sender agents."""
+        from communication_parser import CommunicationPipeline, Message
+
+        sender = make_agent("sender", "Sender")
+        a2 = make_agent("a2", "AgentTwo")
+        agents_by_id = {a.agent_id: a for a in [sender, a2]}
+
+        msg = Message(sender_id="sender", content="Announcement!", recipients=[])
+        pipeline = CommunicationPipeline()
+        pipeline.process_turn_messages([msg], agents_by_id)
+
+        rel_sender = sender.relationships.get("a2")
+        rel_a2 = a2.relationships.get("sender")
+        assert rel_sender is not None and rel_sender.interaction_count == 1
+        assert rel_a2 is not None and rel_a2.interaction_count == 1

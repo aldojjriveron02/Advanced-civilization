@@ -7,10 +7,10 @@ memory, and complex emotions.
 
 from __future__ import annotations
 
-import random
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -53,8 +53,8 @@ class Emotion:
     """A single emotion held by an agent."""
     emotion_type: EmotionType
     intensity: float = 0.0          # 0.0–1.0
-    decay_rate: float = 0.05        # Fraction lost per turn
-    turns_active: int = 0           # How many turns this emotion has been active
+    decay_rate: float = 0.05        # Absolute amount lost per turn (intensity units)
+    turns_active: int = 0           # How many consecutive turns this emotion has been non-zero
 
     def tick_decay(self) -> None:
         """Reduce intensity by decay_rate each turn."""
@@ -286,6 +286,18 @@ class Agent:
     # Breaking point tracking — (breaking_point_type, turn)
     breaking_point_history: List[Tuple[str, int]] = field(default_factory=list)
 
+    # Consecutive turns each emotion has been above the high-intensity threshold (0.6).
+    # Used by EmotionalBreakingPoint to detect sustained high-intensity emotions.
+    high_intensity_turns: Dict[EmotionType, int] = field(default_factory=dict)
+
+    # Rolling history of emotion intensity snapshots (capped at last 5 turns, pre-decay).
+    # Each entry maps EmotionType → intensity at the start of that turn.
+    # Used by Mood.update() to reflect recent emotional experience.
+    # A deque with maxlen=5 automatically drops the oldest entry when full.
+    emotion_history: Deque[Dict[EmotionType, float]] = field(
+        default_factory=lambda: deque(maxlen=5)
+    )
+
     # Temporary behavioral flags (set by breaking points, reset after duration)
     refuses_trade_turns: int = 0       # Remaining turns of trade refusal
     reduced_action_turns: int = 0      # Remaining turns of reduced actions
@@ -307,6 +319,10 @@ class Agent:
         for et in EmotionType:
             if et not in self.emotions:
                 self.emotions[et] = Emotion(emotion_type=et)
+        # Ensure high_intensity_turns has a zero-initialized slot for every EmotionType
+        for et in EmotionType:
+            if et not in self.high_intensity_turns:
+                self.high_intensity_turns[et] = 0
 
     # ------------------------------------------------------------------
     # Emotion helpers
@@ -316,7 +332,12 @@ class Agent:
         return self.emotions[emotion_type]
 
     def set_emotion(self, emotion_type: EmotionType, intensity: float) -> None:
-        self.emotions[emotion_type].intensity = max(0.0, min(1.0, intensity))
+        clamped = max(0.0, min(1.0, intensity))
+        self.emotions[emotion_type].intensity = clamped
+        if clamped == 0.0:
+            # Reset duration trackers when emotion is explicitly cleared
+            self.emotions[emotion_type].turns_active = 0
+            self.high_intensity_turns[emotion_type] = 0
 
     def add_emotion(self, emotion_type: EmotionType, amount: float) -> None:
         self.emotions[emotion_type].add_intensity(amount)
@@ -333,7 +354,15 @@ class Agent:
         return dom.intensity if dom else 0.0
 
     def tick_emotions(self) -> None:
-        """Decay all emotions by one turn and track durations."""
+        """Decay all emotions by one turn and maintain history."""
+        # Snapshot emotion intensities BEFORE decay for mood history.
+        # The deque's maxlen=5 automatically drops entries older than 5 turns.
+        snapshot: Dict[EmotionType, float] = {
+            et: e.intensity for et, e in self.emotions.items()
+        }
+        self.emotion_history.append(snapshot)
+
+        # Decay all emotions
         for emotion in self.emotions.values():
             emotion.tick_decay()
         # Decrement temporary flag counters
